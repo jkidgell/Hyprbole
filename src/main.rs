@@ -15,6 +15,15 @@ use ratatui::{
 
 const MAX_WALLPAPERS: usize = 100;
 
+const BANNER: &[&str] = &[
+    " _                       _           _      ",
+    "| |__  _   _ _ __  _ __ | |__   ___ | | ___ ",
+    "| '_ \\| | | | '_ \\| '__|| '_ \\ / _ \\| |/ _ \\",
+    "| | | | |_| | |_) | |   | |_) | (_) | |  __/",
+    "|_| |_|\\__, | .__/|_|   |_.__/ \\___/|_|\\___|",
+    "        |___/|_|                             ",
+];
+
 struct Wallpaper {
     path: PathBuf,
     filename: String,
@@ -284,11 +293,29 @@ fn update_preview(state: &mut AppState, preview_area: Rect) {
 }
 
 fn ui(frame: &mut Frame, state: &mut AppState) -> Rect {
-    let [main_area, status_area] = Layout::vertical([
+    let [banner_area, main_area, status_area] = Layout::vertical([
+        Constraint::Length(BANNER.len() as u16),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
     .areas(frame.area());
+
+    let split = 24usize;
+    let banner_lines: Vec<Line> = BANNER
+        .iter()
+        .map(|&s| {
+            let (hypr, bole) = if s.len() >= split {
+                (&s[..split], &s[split..])
+            } else {
+                (s, "")
+            };
+            Line::from(vec![
+                Span::styled(hypr, Style::default().fg(Color::Rgb(255, 0, 182))),
+                Span::styled(bole, Style::default().fg(Color::Cyan)),
+            ])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(banner_lines), banner_area);
 
     let [list_area, preview_area] = Layout::horizontal([
         Constraint::Percentage(40),
@@ -310,7 +337,10 @@ fn ui(frame: &mut Frame, state: &mut AppState) -> Rect {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().title(title).borders(Borders::ALL))
+        .block(Block::default()
+            .title(Line::from(title).style(Style::default().fg(Color::Rgb(255, 0, 182))))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan)))
         .highlight_symbol("> ")
         .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
 
@@ -318,21 +348,22 @@ fn ui(frame: &mut Frame, state: &mut AppState) -> Rect {
 
     // Preview pane (empty block — Kitty draws the image after render)
     let preview_block = Block::default()
-        .title(" Preview ")
-        .borders(Borders::ALL);
+        .title(Line::from(" Preview ").style(Style::default().fg(Color::Rgb(255, 0, 182))))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
     frame.render_widget(preview_block, preview_area);
 
     // Status bar
     let status = Line::from(vec![
-        Span::styled("Enter", Style::default().fg(Color::Green)),
+        Span::styled("Enter", Style::default().fg(Color::Rgb(255, 0, 182))),
         Span::raw(": Apply  "),
-        Span::styled("r", Style::default().fg(Color::Green)),
+        Span::styled("r", Style::default().fg(Color::Rgb(255, 0, 182))),
         Span::raw(": Rescan  "),
-        Span::styled("j/k ↑↓", Style::default().fg(Color::Green)),
+        Span::styled("j/k ↑↓", Style::default().fg(Color::Rgb(255, 0, 182))),
         Span::raw(": Navigate  "),
-        Span::styled("←→", Style::default().fg(Color::Green)),
+        Span::styled("←→", Style::default().fg(Color::Rgb(255, 0, 182))),
         Span::raw(": Monitor  "),
-        Span::styled("q", Style::default().fg(Color::Green)),
+        Span::styled("q", Style::default().fg(Color::Rgb(255, 0, 182))),
         Span::raw(": Quit"),
     ]);
 
