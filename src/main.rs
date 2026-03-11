@@ -194,7 +194,62 @@ fn set_wallpaper(monitor: &str, wallpaper: &Path) -> io::Result<()> {
         ));
     }
 
-    Ok(())
+    save_to_hyprpaper_config(monitor, wallpaper)
+}
+
+fn save_to_hyprpaper_config(monitor: &str, wallpaper: &Path) -> io::Result<()> {
+    let config_path = {
+        let home = std::env::var("HOME")
+            .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+        PathBuf::from(home).join(".config/hypr/hyprpaper.conf")
+    };
+
+    // Parse existing config: collect non-preload/non-wallpaper lines and current assignments
+    let mut other_lines: Vec<String> = Vec::new();
+    let mut assignments: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    if let Ok(contents) = fs::read_to_string(&config_path) {
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("preload") {
+                // skip — we'll rebuild from assignments
+            } else if let Some(rest) = trimmed.strip_prefix("wallpaper") {
+                // wallpaper = <monitor>,<path>
+                let rest = rest.trim_start_matches(|c: char| c == ' ' || c == '=').trim();
+                if let Some(comma) = rest.find(',') {
+                    let mon = rest[..comma].trim().to_string();
+                    let path = rest[comma + 1..].trim().to_string();
+                    assignments.insert(mon, path);
+                }
+            } else {
+                other_lines.push(line.to_string());
+            }
+        }
+    }
+
+    // Update assignment for this monitor
+    assignments.insert(
+        monitor.to_string(),
+        wallpaper.display().to_string(),
+    );
+
+    // Rebuild config
+    let mut out = String::new();
+    for line in &other_lines {
+        out.push_str(line);
+        out.push('\n');
+    }
+    for path in assignments.values() {
+        out.push_str(&format!("preload = {}\n", path));
+    }
+    for (mon, path) in &assignments {
+        out.push_str(&format!("wallpaper = {},{}\n", mon, path));
+    }
+
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&config_path, out)
 }
 
 fn cell_size() -> Option<(f64, f64)> {
