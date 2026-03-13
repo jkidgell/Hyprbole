@@ -204,23 +204,43 @@ fn save_to_hyprpaper_config(monitor: &str, wallpaper: &Path) -> io::Result<()> {
         PathBuf::from(home).join(".config/hypr/hyprpaper.conf")
     };
 
-    // Parse existing config: collect non-preload/non-wallpaper lines and current assignments
+    // Parse existing config: extract wallpaper block assignments, discard old-format lines
     let mut other_lines: Vec<String> = Vec::new();
     let mut assignments: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     if let Ok(contents) = fs::read_to_string(&config_path) {
+        let mut in_wallpaper_block = false;
+        let mut block_monitor = String::new();
+        let mut block_path = String::new();
+
         for line in contents.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("preload") {
-                // skip — we'll rebuild from assignments
-            } else if let Some(rest) = trimmed.strip_prefix("wallpaper") {
-                // wallpaper = <monitor>,<path>
-                let rest = rest.trim_start_matches(|c: char| c == ' ' || c == '=').trim();
-                if let Some(comma) = rest.find(',') {
-                    let mon = rest[..comma].trim().to_string();
-                    let path = rest[comma + 1..].trim().to_string();
-                    assignments.insert(mon, path);
+            if trimmed == "wallpaper {" {
+                in_wallpaper_block = true;
+                block_monitor.clear();
+                block_path.clear();
+            } else if in_wallpaper_block && trimmed == "}" {
+                in_wallpaper_block = false;
+                if !block_path.is_empty() {
+                    assignments.insert(block_monitor.clone(), block_path.clone());
                 }
+            } else if in_wallpaper_block {
+                if let Some(val) = trimmed.strip_prefix("monitor").and_then(|s| {
+                    s.trim_start_matches(|c: char| c == ' ' || c == '=').trim().into()
+                }) {
+                    let val: &str = val;
+                    block_monitor = val.to_string();
+                } else if let Some(val) = trimmed.strip_prefix("path").and_then(|s| {
+                    s.trim_start_matches(|c: char| c == ' ' || c == '=').trim().into()
+                }) {
+                    let val: &str = val;
+                    block_path = val.to_string();
+                }
+                // skip other block fields (fit_mode, timeout, order)
+            } else if trimmed.starts_with("preload") {
+                // discard old-format preload lines
+            } else if trimmed.starts_with("wallpaper =") || trimmed.starts_with("wallpaper=") {
+                // discard old-format wallpaper = monitor,path lines
             } else {
                 other_lines.push(line.to_string());
             }
@@ -228,22 +248,19 @@ fn save_to_hyprpaper_config(monitor: &str, wallpaper: &Path) -> io::Result<()> {
     }
 
     // Update assignment for this monitor
-    assignments.insert(
-        monitor.to_string(),
-        wallpaper.display().to_string(),
-    );
+    assignments.insert(monitor.to_string(), wallpaper.display().to_string());
 
-    // Rebuild config
+    // Rebuild config: other settings first, then wallpaper blocks
     let mut out = String::new();
     for line in &other_lines {
         out.push_str(line);
         out.push('\n');
     }
-    for path in assignments.values() {
-        out.push_str(&format!("preload = {}\n", path));
-    }
     for (mon, path) in &assignments {
-        out.push_str(&format!("wallpaper = {},{}\n", mon, path));
+        out.push_str("wallpaper {\n");
+        out.push_str(&format!("    monitor = {}\n", mon));
+        out.push_str(&format!("    path = {}\n", path));
+        out.push_str("}\n");
     }
 
     if let Some(parent) = config_path.parent() {
